@@ -134,11 +134,34 @@ aegis-ai/
 
 ---
 
-## AI Agent Planning Document
+## 📄 Documentation
 
-The full planning document for the AI agent integration is available at:
+### Homework Assignment Documentation
 
-**[`docs/AI_Agent_Planning.md`](./docs/AI_Agent_Planning.md)**
+The comprehensive homework documentation is available in LaTeX format:
+
+**File:** `HOMEWORK2_DOCUMENTATION.tex`
+
+**Contents:**
+- Project overview and objectives
+- Target users and core features
+- Technical implementation details (UI only)
+- AI agent planning and concept
+- System architecture (current and planned)
+- Future integration roadmap
+
+**To compile the LaTeX document:**
+```bash
+pdflatex HOMEWORK2_DOCUMENTATION.tex
+```
+
+Or use [Overleaf](https://www.overleaf.com) to compile online (upload the .tex file).
+
+### AI Agent Planning Document
+
+The original AI agent planning document is available at:
+
+**[`docs/AI_Agent_Planning.md`](./docs/AI_Agent_Planning.md)** (if included)
 
 It covers:
 - Project overview and target users
