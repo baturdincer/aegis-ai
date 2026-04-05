@@ -1,6 +1,5 @@
 """
 Web page content analysis and domain reputation tools.
-Functions are called directly by the agent pipeline (no CrewAI dependency).
 """
 import re
 import socket
@@ -8,12 +7,7 @@ import ipaddress
 import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
-
-def tool(name):
-    """No-op decorator — tools are called directly, not via CrewAI."""
-    def decorator(fn):
-        return fn
-    return decorator
+from crewai.tools import tool
 
 TOP_BRANDS = [
     'paypal', 'amazon', 'apple', 'microsoft', 'google', 'facebook',
@@ -264,3 +258,57 @@ def check_domain_reputation(url: str) -> str:
 
     except Exception as e:
         return f"ERROR in domain reputation check: {e}"
+
+
+# Basic caching mechanism for the phishing DB
+_PHISH_DB_CACHE = set()
+_PHISH_DB_LAST_FETCH = 0
+
+@tool("Check Phishing Databases")
+def check_phishing_databases(url: str) -> str:
+    """
+    Checks if the URL is present in recognized public phishing databases (e.g., OpenPhish feed).
+    Returns an assessment indicating if the URL is blacklisted.
+    """
+    global _PHISH_DB_CACHE, _PHISH_DB_LAST_FETCH
+    import time
+    
+    # Refresh cache if older than 1 hour (3600s)
+    current_time = time.time()
+    if current_time - _PHISH_DB_LAST_FETCH > 3600 or not _PHISH_DB_CACHE:
+        try:
+            # Using OpenPhish free feed
+            response = requests.get('https://openphish.com/feed.txt', timeout=15)
+            if response.status_code == 200:
+                _PHISH_DB_CACHE = set(line.strip() for line in response.text.splitlines() if line.strip())
+                _PHISH_DB_LAST_FETCH = current_time
+        except Exception as e:
+            return f"WARN: Failed to reach OpenPhish database for verification: {e}"
+
+    if url in _PHISH_DB_CACHE:
+        return (
+            f"PHISHING DATABASE CHECK for: {url}\n"
+            "ALERT: URL IS PRESENT IN OPENPHISH DATABASE!\n"
+            "Risk indicators: 10 | Estimated intel score: 100/100\n"
+            "Findings:\n  - ALERT: URL confirmed as an active phishing link in public databases."
+        )
+    
+    # Try slightly fuzzier matching (without trailing slashes or scheme differences)
+    clean_url = url.split("://")[-1].rstrip('/')
+    for db_url in _PHISH_DB_CACHE:
+        db_clean = db_url.split("://")[-1].rstrip('/')
+        if clean_url == db_clean:
+            return (
+                f"PHISHING DATABASE CHECK for: {url}\n"
+                "ALERT: URL MATCHES ENTRY IN OPENPHISH DATABASE!\n"
+                "Risk indicators: 10 | Estimated intel score: 100/100\n"
+                "Findings:\n  - ALERT: URL confirmed as an active phishing link in public databases."
+            )
+
+    return (
+        f"PHISHING DATABASE CHECK for: {url}\n"
+        "OK: URL is not listed in the current OpenPhish database.\n"
+        "Risk indicators: 0 | Estimated intel score: 0/100\n"
+        "Findings:\n  - OK: URL is not listed in open phishing databases."
+    )
+

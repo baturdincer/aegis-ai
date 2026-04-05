@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from models import UrlScanRequest
-from crew.aegis_crew import analyze_url, analyze_file
+from crew.crew import analyze_url, analyze_file
 
 app = FastAPI(
     title="Aegis Threat Analyzer API",

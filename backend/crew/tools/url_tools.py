@@ -5,12 +5,8 @@ Functions are called directly by the agent pipeline (no CrewAI dependency).
 import re
 import requests
 from urllib.parse import urlparse
+from crewai.tools import tool
 
-def tool(name):
-    """No-op decorator — tools are called directly, not via CrewAI."""
-    def decorator(fn):
-        return fn
-    return decorator
 
 SUSPICIOUS_TLDS = {
     '.tk', '.ml', '.ga', '.cf', '.gq', '.xyz', '.top', '.click',
@@ -45,7 +41,7 @@ SECURITY_HEADERS = {
 }
 
 
-@tool("URL Pattern Analyzer")
+@tool
 def analyze_url_patterns(url: str) -> str:
     """
     Analyzes a URL for suspicious structural patterns: length, IP-based hosting,
@@ -150,7 +146,7 @@ def analyze_url_patterns(url: str) -> str:
         return f"ERROR in URL pattern analysis: {e}"
 
 
-@tool("HTTP Security Header Inspector")
+@tool
 def inspect_http_headers(url: str) -> str:
     """
     Makes an HTTP GET request to the URL and inspects security response headers,

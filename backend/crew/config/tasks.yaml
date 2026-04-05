@@ -1,0 +1,49 @@
+static_analysis_task:
+  description: >
+    Perform static analysis on: {url}
+
+    Step 1 — Call 'URL Pattern Analyzer' with the URL.
+    Step 2 — Call 'HTTP Security Header Inspector' with the URL.
+    Report ALL findings from both tools verbatim.
+  expected_output: >
+    A detailed static analysis covering URL structure findings and HTTP header 
+    security findings, with severity (ALERT/WARN/OK) and numeric scores.
+  agent: static_analyst
+
+dynamic_analysis_task:
+  description: >
+    Perform dynamic content analysis on: {url}
+
+    Call 'Web Page Content Analyzer' with the URL and report all findings completely.
+  expected_output: >
+    A detailed dynamic analysis: form behaviors, JavaScript patterns, iframes, 
+    redirects, and brand impersonation findings with severity labels.
+  agent: dynamic_analyst
+
+intel_synthesis_task:
+  description: >
+    You are the final analyst. URL: {url}
+
+    Step 1 — Call 'Check Phishing Databases' with the URL. If the URL is found, you MUST flag it as an ALERT.
+    
+    Step 2 — Call 'Domain Reputation Checker' with the URL.
+
+    Step 3 — Using ALL previous findings, assign phase scores (0-100) based on severity:
+      • static  = score from URL patterns + HTTP headers
+      • dynamic = score from page content + JS analysis
+      • intel   = score from domain reputation + phishing database check
+
+    Step 4 — Compute: riskScore = round(0.35 * static + 0.40 * dynamic + 0.25 * intel)
+      Verdict: riskScore >= 70 -> MALICIOUS | >= 40 -> SUSPICIOUS | < 40 -> CLEAN
+
+    Step 5 — Write 3-5 prioritized, actionable mitigation steps.
+
+    RULES:
+    - You must structure the output EXACTLY matching the provided Pydantic model (`CrewReportOutput`).
+    - The output will be parsed into JSON automatically by CrewAI.
+    - targetType must be exactly 'url'.
+    - status values: exactly 'alert', 'warn', or 'ok'.
+    - verdict values: exactly 'MALICIOUS', 'SUSPICIOUS', or 'CLEAN'.
+  expected_output: >
+    A fully populated Pydantic output mapped to `CrewReportOutput` containing all findings, scores, and mitigations.
+  agent: intel_specialist
