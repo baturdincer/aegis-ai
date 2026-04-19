@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from urllib.parse import urlparse
 from typing import TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -21,6 +22,11 @@ MODEL_NAME = "llama-3.3-70b-versatile"
 
 class UrlAnalysisState(TypedDict, total=False):
     url: str
+    static_tool_output: str
+    header_tool_output: str
+    dynamic_tool_output: str
+    phishing_output: str
+    reputation_output: str
     static_summary: str
     dynamic_summary: str
     intel_summary: str
@@ -136,51 +142,244 @@ def _invoke(messages: list) -> str:
     return (response.content or "").strip()
 
 
+def _tool_run(tool, url: str) -> str:
+    """Execute a CrewAI Tool wrapper and return its string output."""
+    return tool.run(url)
+
+
+def _extract_estimated_score(text: str) -> int:
+    """Extract '<... score: N/100>' from tool outputs."""
+    match = re.search(r"Estimated\s+[a-zA-Z\s]*score:\s*(\d{1,3})/100", text)
+    if not match:
+        return 0
+    value = int(match.group(1))
+    return max(0, min(100, value))
+
+
+def _contains_strong_alert(text: str) -> bool:
+    """Return True if tool output contains strong alert indicators."""
+    upper = (text or "").upper()
+    if "ALERT:" not in upper:
+        return False
+    strong_tokens = (
+        "PRESENT IN OPENPHISH",
+        "MATCHES ENTRY IN OPENPHISH",
+        "URL IS PRESENT",
+        "PUNYCODE DOMAIN",
+        "IP ADDRESS USED AS HOST",
+        "CREDENTIAL HARVESTING",
+        "EXTERNAL DOMAIN",
+        "HOMOGLYPH",
+    )
+    return any(token in upper for token in strong_tokens)
+
+
+def _is_low_signal_hidden_iframe_alert(item: dict) -> bool:
+    label = (item.get("label") or "").lower()
+    detail = (item.get("detail") or "").lower()
+    return "hidden iframe" in label and ("1 hidden iframe" in detail or "single hidden iframe" in detail)
+
+
+def _merge_minimum_phase_scores(report: dict, static_floor: int, dynamic_floor: int, intel_floor: int) -> dict:
+    """Ensure phase scores cannot fall below deterministic tool-based floors."""
+    report.setdefault("scores", {})
+    report.setdefault("phases", {})
+
+    def _safe(value) -> int:
+        try:
+            return max(0, min(100, int(value)))
+        except (TypeError, ValueError):
+            return 0
+
+    current_static = _safe(report.get("scores", {}).get("static", report.get("phases", {}).get("static", {}).get("score", 0)))
+    current_dynamic = _safe(report.get("scores", {}).get("dynamic", report.get("phases", {}).get("dynamic", {}).get("score", 0)))
+    current_intel = _safe(report.get("scores", {}).get("intel", report.get("phases", {}).get("intel", {}).get("score", 0)))
+
+    static_score = max(current_static, _safe(static_floor))
+    dynamic_score = max(current_dynamic, _safe(dynamic_floor))
+    intel_score = max(current_intel, _safe(intel_floor))
+
+    report["scores"]["static"] = static_score
+    report["scores"]["dynamic"] = dynamic_score
+    report["scores"]["intel"] = intel_score
+
+    if "static" in report["phases"]:
+        report["phases"]["static"]["score"] = static_score
+    if "dynamic" in report["phases"]:
+        report["phases"]["dynamic"]["score"] = dynamic_score
+    if "intel" in report["phases"]:
+        report["phases"]["intel"]["score"] = intel_score
+
+    return report
+
+
+def _enforce_threat_floor(
+    report: dict,
+    static_tool_output: str,
+    header_tool_output: str,
+    dynamic_tool_output: str,
+    phishing_output: str,
+    reputation_output: str,
+) -> dict:
+    """Prevent CLEAR/CLEAN verdicts when deterministic tool signals indicate threat."""
+
+    def _set_floor(min_risk: int, verdict: str | None = None) -> None:
+        current = int(report.get("riskScore", 0))
+        if current < min_risk:
+            report["riskScore"] = min_risk
+        if verdict is not None:
+            report["verdict"] = verdict
+
+    phishing_upper = (phishing_output or "").upper()
+    if "ALERT: URL IS PRESENT IN OPENPHISH DATABASE" in phishing_upper or "ALERT: URL MATCHES ENTRY IN OPENPHISH DATABASE" in phishing_upper:
+        _set_floor(90, "MALICIOUS")
+        return report
+
+    tool_outputs = [
+        static_tool_output,
+        header_tool_output,
+        dynamic_tool_output,
+        phishing_output,
+        reputation_output,
+    ]
+    strong_hits = sum(1 for output in tool_outputs if _contains_strong_alert(output or ""))
+
+    phases = report.get("phases", {})
+    findings = []
+    for phase_name in ("static", "dynamic", "intel"):
+        findings.extend(phases.get(phase_name, {}).get("findings", []))
+    alert_findings = [item for item in findings if (item.get("status") or "").lower() == "alert"]
+    significant_alerts = [item for item in alert_findings if not _is_low_signal_hidden_iframe_alert(item)]
+
+    if strong_hits >= 2:
+        _set_floor(70, "MALICIOUS")
+    elif strong_hits == 1:
+        _set_floor(45, "SUSPICIOUS")
+
+    if len(significant_alerts) >= 2:
+        _set_floor(55, "SUSPICIOUS")
+    elif len(significant_alerts) == 1:
+        _set_floor(40, "SUSPICIOUS")
+
+    return report
+
+
+def _apply_low_risk_calibration(url: str, report: dict) -> dict:
+    """Reduce false positives for legitimate domains when no alert findings exist."""
+    phases = report.get("phases", {})
+    findings = []
+    for phase_name in ("static", "dynamic", "intel"):
+        findings.extend(phases.get(phase_name, {}).get("findings", []))
+
+    alerts = [f for f in findings if (f.get("status") or "").lower() == "alert"]
+
+    has_alert = any(not _is_low_signal_hidden_iframe_alert(item) for item in alerts)
+    domain = urlparse(url).netloc.lower()
+    trusted_suffixes = (".com", ".com.tr", ".org.tr", ".gov.tr", ".edu.tr")
+    domain_looks_normal = any(domain.endswith(sfx) for sfx in trusted_suffixes)
+
+    if has_alert or not domain_looks_normal:
+        return report
+
+    score = int(report.get("riskScore", 0))
+    if score < 40:
+        return report
+
+    # If all findings are OK/WARN and intel is clean, be conservative with suspicious verdict.
+    intel_score = int(report.get("scores", {}).get("intel", 0))
+    static_score = int(report.get("scores", {}).get("static", 0))
+    dynamic_score = int(report.get("scores", {}).get("dynamic", 0))
+    if intel_score <= 10 and static_score <= 25 and dynamic_score <= 35:
+        report["riskScore"] = 35
+        report["verdict"] = "CLEAN"
+    return report
+
+
+def _normalize_report_scores(report: dict) -> dict:
+    """Recompute total risk and verdict from phase scores deterministically."""
+    scores = report.get("scores", {}) or {}
+    phases = report.get("phases", {}) or {}
+
+    def _safe_score(value) -> int:
+        try:
+            return max(0, min(100, int(value)))
+        except (TypeError, ValueError):
+            return 0
+
+    static_score = _safe_score(scores.get("static", phases.get("static", {}).get("score", 0)))
+    dynamic_score = _safe_score(scores.get("dynamic", phases.get("dynamic", {}).get("score", 0)))
+    intel_score = _safe_score(scores.get("intel", phases.get("intel", {}).get("score", 0)))
+
+    report.setdefault("scores", {})
+    report["scores"]["static"] = static_score
+    report["scores"]["dynamic"] = dynamic_score
+    report["scores"]["intel"] = intel_score
+
+    if "static" in phases:
+        phases["static"]["score"] = static_score
+    if "dynamic" in phases:
+        phases["dynamic"]["score"] = dynamic_score
+    if "intel" in phases:
+        phases["intel"]["score"] = intel_score
+
+    risk_score = round(0.35 * static_score + 0.40 * dynamic_score + 0.25 * intel_score)
+    report["riskScore"] = risk_score
+    report["verdict"] = "MALICIOUS" if risk_score >= 70 else "SUSPICIOUS" if risk_score >= 40 else "CLEAN"
+
+    return report
+
+
 def _run_static(state: UrlAnalysisState) -> UrlAnalysisState:
     url = state["url"]
+    static_tool_output = _tool_run(analyze_url_patterns, url)
+    header_tool_output = _tool_run(inspect_http_headers, url)
     static_context = (
-        f"=== URL PATTERN ANALYSIS ===\n{analyze_url_patterns(url)}\n\n"
-        f"=== HTTP HEADER INSPECTION ===\n{inspect_http_headers(url)}"
+        f"=== URL PATTERN ANALYSIS ===\n{static_tool_output}\n\n"
+        f"=== HTTP HEADER INSPECTION ===\n{header_tool_output}"
     )
 
-    summary = _invoke([
-        SystemMessage(content=_STATIC_SYSTEM),
-        HumanMessage(content=(
-            f"The target URL is: {url}\n\n"
-            f"Here are the automated tool results:\n\n{static_context}\n\n"
-            "Summarize the static phase findings and provide a static risk score (0-100)."
-        )),
-    ])
+    static_score = round((_extract_estimated_score(static_tool_output) + _extract_estimated_score(header_tool_output)) / 2)
+    summary = (
+        f"{static_context}\n\n"
+        f"Deterministic static score from tools: {static_score}/100\n"
+        "Rule: Preserve tool severities exactly; do not upgrade OK findings to WARN/ALERT."
+    )
 
-    return {"static_summary": summary}
+    return {
+        "static_tool_output": static_tool_output,
+        "header_tool_output": header_tool_output,
+        "static_summary": summary,
+    }
 
 
 def _run_dynamic(state: UrlAnalysisState) -> UrlAnalysisState:
     url = state["url"]
-    summary = _invoke([
-        SystemMessage(content=_DYNAMIC_SYSTEM),
-        HumanMessage(content=(
-            f"The target URL is: {url}\n\n"
-            f"STATIC ANALYSIS FINDINGS (from Agent 1):\n{state['static_summary']}\n\n"
-            f"=== PAGE CONTENT ANALYSIS ===\n{analyze_page_content(url)}\n\n"
-            "Summarize the dynamic phase findings and provide a dynamic risk score (0-100)."
-        )),
-    ])
+    dynamic_tool_output = _tool_run(analyze_page_content, url)
+    dynamic_score = _extract_estimated_score(dynamic_tool_output)
+    summary = (
+        f"=== PAGE CONTENT ANALYSIS ===\n{dynamic_tool_output}\n\n"
+        f"Deterministic dynamic score from tools: {dynamic_score}/100\n"
+        "Rule: If the tool marks a finding as OK, keep it as OK."
+    )
 
-    return {"dynamic_summary": summary}
+    return {
+        "dynamic_tool_output": dynamic_tool_output,
+        "dynamic_summary": summary,
+    }
 
 
 def _run_intel(state: UrlAnalysisState) -> UrlAnalysisState:
     url = state["url"]
-    reputation_output = check_domain_reputation(url)
-    phishing_output = check_phishing_databases(url)
+    reputation_output = _tool_run(check_domain_reputation, url)
+    phishing_output = _tool_run(check_phishing_databases, url)
 
     raw = _invoke([
         SystemMessage(content=_INTEL_SYSTEM),
         HumanMessage(content=(
             f"Synthesize a complete threat report for: {url}\n\n"
-            f"--- STATIC ANALYSIS SUMMARY (LangGraph node 1) ---\n{state['static_summary']}\n\n"
-            f"--- DYNAMIC ANALYSIS SUMMARY (LangGraph node 2) ---\n{state['dynamic_summary']}\n\n"
+            f"--- URL PATTERN TOOL OUTPUT ---\n{state['static_tool_output']}\n\n"
+            f"--- HEADER TOOL OUTPUT ---\n{state['header_tool_output']}\n\n"
+            f"--- PAGE CONTENT TOOL OUTPUT ---\n{state['dynamic_tool_output']}\n\n"
             f"--- PHISHING DATABASE CHECK ---\n{phishing_output}\n\n"
             f"--- DOMAIN REPUTATION CHECK ---\n{reputation_output}\n\n"
             "Instructions:\n"
@@ -195,6 +394,7 @@ def _run_intel(state: UrlAnalysisState) -> UrlAnalysisState:
             "- targetType MUST be exactly: 'url'\n"
             "- All scores MUST be integers 0-100\n"
             "- Each phase MUST have at least 3 findings\n"
+            "- NEVER escalate an explicit OK tool finding to WARN or ALERT\n"
             "- Output ONLY the JSON object, nothing else\n\n"
             f"Required JSON structure (follow exactly):\n{_schema_example(url)}"
         )),
@@ -204,7 +404,49 @@ def _run_intel(state: UrlAnalysisState) -> UrlAnalysisState:
     if not report:
         raise ValueError("LangGraph failed to produce valid JSON. Raw output:\n" + raw[:500])
 
-    return {"final_report_raw": raw, "final_report": report}
+    # Deterministic score floors from tool outputs to prevent under-reporting by LLM.
+    static_floor = round((
+        _extract_estimated_score(state["static_tool_output"]) +
+        _extract_estimated_score(state["header_tool_output"])
+    ) / 2)
+    dynamic_floor = _extract_estimated_score(state["dynamic_tool_output"])
+    intel_floor = max(
+        _extract_estimated_score(phishing_output),
+        _extract_estimated_score(reputation_output),
+    )
+
+    # Hard escalation when phishing DB confirms the URL.
+    if "ALERT: URL IS PRESENT IN OPENPHISH DATABASE" in phishing_output.upper() or "ALERT: URL MATCHES ENTRY IN OPENPHISH DATABASE" in phishing_output.upper():
+        intel_floor = max(intel_floor, 95)
+
+    report = _merge_minimum_phase_scores(report, static_floor, dynamic_floor, intel_floor)
+    report = _normalize_report_scores(report)
+    report = _enforce_threat_floor(
+        report,
+        state.get("static_tool_output", ""),
+        state.get("header_tool_output", ""),
+        state.get("dynamic_tool_output", ""),
+        phishing_output,
+        reputation_output,
+    )
+
+    # Apply low-risk calibration only when there is no strong tool-level alert.
+    strong_tool_alert = any([
+        _contains_strong_alert(state.get("static_tool_output", "")),
+        _contains_strong_alert(state.get("header_tool_output", "")),
+        _contains_strong_alert(state.get("dynamic_tool_output", "")),
+        _contains_strong_alert(phishing_output),
+        _contains_strong_alert(reputation_output),
+    ])
+    if not strong_tool_alert:
+        report = _apply_low_risk_calibration(url, report)
+
+    return {
+        "reputation_output": reputation_output,
+        "phishing_output": phishing_output,
+        "final_report_raw": raw,
+        "final_report": report,
+    }
 
 
 def _build_graph():

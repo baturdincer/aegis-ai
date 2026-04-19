@@ -6,9 +6,13 @@ import os
 from dotenv import load_dotenv
 load_dotenv()  # Must be first — loads GROQ_API_KEY before crewai imports
 
-if os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"):
+if os.getenv("ENABLE_LANGSMITH", "false").lower() == "true":
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
     os.environ.setdefault("LANGCHAIN_PROJECT", "aegis-ai")
+else:
+    os.environ.pop("LANGCHAIN_TRACING_V2", None)
+    os.environ.pop("LANGCHAIN_API_KEY", None)
+    os.environ.pop("LANGSMITH_API_KEY", None)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware

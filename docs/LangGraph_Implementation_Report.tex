@@ -1,0 +1,318 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+
+\geometry{margin=1in}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+
+\lstdefinestyle{code}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  rulecolor=\color{gray!35}
+}
+
+\title{Aegis AI\\LangGraph Integration Report}
+\author{Batur Dincer}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Assignment Context}
+This report documents the LangGraph implementation requested in the course instructions:
+\begin{itemize}[leftmargin=1.25em]
+  \item Include LangGraph in the project.
+  \item Implement it effectively and explain purpose.
+  \item Keep existing CrewAI implementation working in the same project.
+  \item Define implementation steps clearly.
+  \item LangSmith integration is helpful (optional but supported).
+  \item Commit to Git and share Git account link.
+  \item Submit a PDF report including screenshot(s) and implemented features.
+\end{itemize}
+
+\section{Project Scope}
+The existing project was \textbf{not recreated from scratch}. LangGraph was integrated into the same FastAPI backend and React frontend where CrewAI already existed.
+
+\subsection*{Existing Stack}
+\begin{itemize}[leftmargin=1.25em]
+  \item Frontend: React + Vite
+  \item Backend: FastAPI (Python)
+  \item Existing orchestration: CrewAI
+  \item LLM provider: Groq OpenAI-compatible endpoint
+\end{itemize}
+
+\section{Why LangGraph Was Added}
+LangGraph was added to provide explicit graph-based orchestration with well-defined state transitions between analysis stages:
+\begin{enumerate}[leftmargin=1.5em]
+  \item Static analysis node
+  \item Dynamic analysis node
+  \item Threat intelligence synthesis node
+\end{enumerate}
+
+This gives deterministic flow structure, easier debugging per node, and cleaner discussion points in class for agentic architecture decisions.
+
+\section{Implementation Steps}
+\subsection{Step 1: Add Dependencies}
+Backend dependencies were extended to include LangGraph ecosystem packages:
+\begin{lstlisting}[style=code]
+langgraph>=0.2.0
+langchain-openai>=0.2.0
+langsmith>=0.1.0
+\end{lstlisting}
+
+\subsection{Step 2: Keep a Shared Output Contract}
+A shared report schema is used so CrewAI and LangGraph produce the same structure for frontend rendering.
+
+Key point:
+\begin{itemize}[leftmargin=1.25em]
+  \item One response schema for both engines prevents UI branching complexity.
+\end{itemize}
+
+\subsection{Step 3: Build LangGraph Pipeline}
+A dedicated file \texttt{backend/langgraph\_pipeline.py} was created.
+
+Graph state includes:
+\begin{itemize}[leftmargin=1.25em]
+  \item URL input
+  \item Tool outputs (static/header/dynamic/intel)
+  \item Intermediate summaries
+  \item Final JSON report
+\end{itemize}
+
+Graph topology:
+\begin{lstlisting}[style=code]
+START -> static -> dynamic -> intel -> END
+\end{lstlisting}
+
+\subsection{Step 4: Integrate Existing Tools Correctly}
+CrewAI tools decorated with \texttt{@tool} return Tool objects. For LangGraph usage, tool execution was fixed to use:
+\begin{lstlisting}[style=code]
+tool.run(url)
+\end{lstlisting}
+instead of direct callable usage, preventing the runtime error:
+\begin{lstlisting}[style=code]
+TypeError: 'Tool' object is not callable
+\end{lstlisting}
+
+\subsection{Step 5: Route Selection in FastAPI}
+The existing endpoint stayed the same path:\
+\texttt{POST /api/scan/url}
+
+A request field \texttt{engine} was added:
+\begin{itemize}[leftmargin=1.25em]
+  \item \texttt{engine="crew"} uses CrewAI
+  \item \texttt{engine="langgraph"} uses LangGraph
+\end{itemize}
+
+This keeps one API contract while enabling side-by-side operation.
+
+\subsection{Step 6: Frontend Engine Selector}
+In URL scan mode, the dashboard includes a selector:
+\begin{itemize}[leftmargin=1.25em]
+  \item CrewAI
+  \item LangGraph
+\end{itemize}
+
+Selected engine is sent to backend and shown in report/history views.
+
+\subsection{Step 7: LangSmith Support (Optional)}
+LangSmith integration is available but configured as opt-in to avoid blocking local development.
+
+Recommended environment setup:
+\begin{lstlisting}[style=code]
+ENABLE_LANGSMITH=true
+LANGCHAIN_API_KEY=...
+LANGCHAIN_PROJECT=aegis-ai
+LANGCHAIN_TRACING_V2=true
+\end{lstlisting}
+
+If LangSmith is not required, keep \texttt{ENABLE\_LANGSMITH=false} (default safe behavior).
+
+\subsection{Step 8: False Positive Optimization}
+Initial tests flagged some trusted sites as suspicious. Optimizations were applied:
+\begin{itemize}[leftmargin=1.25em]
+  \item Better registered-domain parsing for ccTLD patterns (example: \texttt{com.tr}).
+  \item Separate canonical URL length from query-string length.
+  \item Lower penalty for single hidden external iframe in dynamic analysis.
+  \item Conservative low-risk calibration for trusted domains with no strong alert evidence.
+\end{itemize}
+
+\section{Scoring Logic}
+Risk score remains:
+\[
+\text{riskScore} = \mathrm{round}(0.35 \cdot \text{static} + 0.40 \cdot \text{dynamic} + 0.25 \cdot \text{intel})
+\]
+
+Verdict mapping:
+\begin{itemize}[leftmargin=1.25em]
+  \item \texttt{MALICIOUS} if riskScore $\geq 70$
+  \item \texttt{SUSPICIOUS} if riskScore $\geq 40$
+  \item \texttt{CLEAN} otherwise
+\end{itemize}
+
+\section{Verification Steps}
+\subsection*{Run Locally}
+\begin{enumerate}[leftmargin=1.5em]
+  \item Start backend:
+  \begin{lstlisting}[style=code]
+cd backend
+..\.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+  \end{lstlisting}
+
+  \item Start frontend:
+  \begin{lstlisting}[style=code]
+cd ..
+npm run dev
+  \end{lstlisting}
+
+  \item Open:
+  \begin{itemize}[leftmargin=1.25em]
+    \item Frontend: \url{http://localhost:5173}
+    \item Health: \url{http://localhost:8000/api/health}
+  \end{itemize}
+\end{enumerate}
+
+\subsection*{Functional Checks}
+\begin{itemize}[leftmargin=1.25em]
+  \item URL scan works with \texttt{engine=crew}.
+  \item URL scan works with \texttt{engine=langgraph}.
+  \item File scan still works (heuristic path unchanged).
+  \item Frontend report renders same schema for both engines.
+\end{itemize}
+
+\section{Requirement-to-Implementation Mapping}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.47\textwidth}|>{\raggedright\arraybackslash}p{0.47\textwidth}|}
+\hline
+\textbf{Requirement} & \textbf{Implementation Evidence} \\
+\hline
+Include LangGraph in project & \texttt{backend/langgraph\_pipeline.py} with explicit state graph \\
+\hline
+Understand purpose and implement effectively & Node-based flow, shared schema, deterministic tool usage, calibration logic \\
+\hline
+Do not create new project & Integrated into existing Aegis codebase with existing CrewAI components \\
+\hline
+CrewAI and LangGraph both should work & Runtime route switch via \texttt{engine} in existing \texttt{/api/scan/url} endpoint \\
+\hline
+LangSmith helpful & Optional opt-in environment support documented and wired \\
+\hline
+Well-defined steps & Section ``Implementation Steps'' in this report \\
+\hline
+Commit and share Git account link & Commit created in project repository; links in Section \ref{sec:git} \\
+\hline
+Submit PDF with screenshot and features & This \LaTeX{} report + screenshot section below \\
+\hline
+\end{longtable}
+
+\section{Implemented Features}
+\begin{itemize}[leftmargin=1.25em]
+  \item LangGraph URL analysis pipeline (static, dynamic, intel nodes)
+  \item Existing CrewAI flow preserved and selectable
+  \item Engine selector in frontend URL scan page
+  \item Engine label shown in report and history views
+  \item Shared report normalization and validation
+  \item Optional LangSmith tracing integration
+  \item False-positive optimizations for trusted domains
+\end{itemize}
+
+\section{Screenshot Section (Required for Submission)}
+For a strong submission, capture and include the screenshots below in this order.
+
+\subsection*{What to Capture}
+\begin{enumerate}[leftmargin=1.5em]
+  \item Home or architecture view showing the project context.
+  \item Dashboard URL mode with visible \texttt{CrewAI / LangGraph} selector.
+  \item A URL scan result using \texttt{engine=langgraph} (report modal open).
+  \item A URL scan result using \texttt{engine=crew} (for side-by-side evidence).
+  \item History page showing engine labels recorded for results.
+  \item Backend health/API proof (terminal or response showing available engines).
+\end{enumerate}
+
+\subsection*{Capture Rules}
+\begin{itemize}[leftmargin=1.25em]
+  \item Keep browser zoom around 90\%--100\% so labels are readable.
+  \item Include timestamp and verdict area in result screenshots.
+  \item Avoid cropping out URL bar and engine selector in key shots.
+  \item Blur any sensitive key/token values if terminal is visible.
+\end{itemize}
+
+\subsection*{File Names to Use}
+Save images under \texttt{docs/} with these names:
+\begin{itemize}[leftmargin=1.25em]
+  \item \texttt{s1-home-architecture.png}
+  \item \texttt{s2-dashboard-engine-selector.png}
+  \item \texttt{s3-langgraph-result.png}
+  \item \texttt{s4-crew-result.png}
+  \item \texttt{s5-history-engine-labels.png}
+  \item \texttt{s6-backend-health.png}
+\end{itemize}
+
+\subsection*{LaTeX Blocks (Ready to Use)}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{s1-home-architecture.png}
+  \caption{Project overview and architecture context}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{s2-dashboard-engine-selector.png}
+  \caption{Dashboard in URL mode with CrewAI and LangGraph selector}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{s3-langgraph-result.png}
+  \caption{LangGraph scan output and report details}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{s4-crew-result.png}
+  \caption{CrewAI scan output for comparison}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{s5-history-engine-labels.png}
+  \caption{History page showing engine labels and stored reports}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{s6-backend-health.png}
+  \caption{Backend health/API proof showing both engines available}
+\end{figure}
+
+\section{Git and Repository Links}\label{sec:git}
+\begin{itemize}[leftmargin=1.25em]
+  \item GitHub account: \url{https://github.com/baturdincer}
+  \item Repository: \url{https://github.com/baturdincer/aegis-ai}
+\end{itemize}
+
+\section{Class Discussion Notes}
+Be ready to explain:
+\begin{enumerate}[leftmargin=1.5em]
+  \item Why LangGraph was added although CrewAI already existed.
+  \item How Tool wrapper execution differs between CrewAI and plain function calls.
+  \item How one schema supports two orchestrators cleanly.
+  \item Why false positives happened and how calibration reduced them.
+  \item Trade-offs of optional LangSmith tracing in classroom/demo environments.
+\end{enumerate}
+
+\section{Conclusion}
+LangGraph was integrated successfully into the existing project without breaking CrewAI. Both engines run in parallel under one API contract and one UI, with clearly defined implementation steps, optional tracing, and verification flow suitable for class presentation and final submission.
+
+\end{document}

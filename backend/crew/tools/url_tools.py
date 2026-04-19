@@ -40,6 +40,32 @@ SECURITY_HEADERS = {
     'referrer-policy': 'Referrer-Policy',
 }
 
+# Common multi-label public suffixes used by ccTLD domains.
+_MULTI_LABEL_SUFFIXES = {
+    'co.uk', 'org.uk', 'gov.uk',
+    'com.tr', 'org.tr', 'gov.tr',
+    'com.au', 'com.br', 'com.mx', 'com.ar',
+    'co.jp', 'co.kr', 'co.in', 'co.id',
+    'com.sg', 'com.hk',
+}
+
+
+def _split_registered_domain(domain: str) -> tuple[str, str]:
+    """Return (registered_domain, subdomain) for a given hostname."""
+    labels = [label for label in domain.split('.') if label]
+    if len(labels) < 2:
+        return domain, ''
+
+    last_two = '.'.join(labels[-2:])
+    if last_two in _MULTI_LABEL_SUFFIXES and len(labels) >= 3:
+        registered = '.'.join(labels[-3:])
+        subdomain = '.'.join(labels[:-3])
+        return registered, subdomain
+
+    registered = '.'.join(labels[-2:])
+    subdomain = '.'.join(labels[:-2])
+    return registered, subdomain
+
 
 @tool
 def analyze_url_patterns(url: str) -> str:
@@ -57,16 +83,23 @@ def analyze_url_patterns(url: str) -> str:
         path = parsed.path.lower()
         domain_clean = domain.split(':')[0]
         parts = domain_clean.split('.')
+        registered_domain, subdomain = _split_registered_domain(domain_clean)
 
         # 1. URL length
-        if len(url) > 100:
-            findings.append(f"ALERT: Very long URL ({len(url)} chars) — classic phishing indicator")
+        canonical_len = len(f"{parsed.scheme}://{domain_clean}{parsed.path}")
+        query_len = len(parsed.query or '')
+        if canonical_len > 120:
+            findings.append(f"ALERT: Very long canonical URL ({canonical_len} chars) — phishing indicator")
             risk += 2
-        elif len(url) > 75:
-            findings.append(f"WARN: Moderately long URL ({len(url)} chars)")
+        elif canonical_len > 90:
+            findings.append(f"WARN: Moderately long canonical URL ({canonical_len} chars)")
             risk += 1
         else:
-            findings.append(f"OK: URL length is normal ({len(url)} chars)")
+            findings.append(f"OK: Canonical URL length is normal ({canonical_len} chars)")
+
+        if query_len > 250:
+            findings.append(f"WARN: Large query string ({query_len} chars) — can be tracking-heavy or obfuscated")
+            risk += 1
 
         # 2. HTTPS
         if parsed.scheme != 'https':
@@ -94,20 +127,24 @@ def analyze_url_patterns(url: str) -> str:
             findings.append(f"OK: TLD '{tld}' appears standard")
 
         # 6. Subdomain count
-        sub_count = len(parts) - 2
+        sub_labels = [p for p in subdomain.split('.') if p and p != 'www']
+        sub_count = len(sub_labels)
         if sub_count > 3:
             findings.append(f"ALERT: Excessive subdomain depth ({sub_count}) — obfuscation technique")
             risk += 2
         elif sub_count > 1:
             findings.append(f"WARN: Multiple subdomains ({sub_count}) — verify legitimacy")
             risk += 1
+        else:
+            findings.append("OK: Subdomain depth is normal")
 
         # 7. Brand in subdomain (not apex)
-        apex = '.'.join(parts[-2:]) if len(parts) >= 2 else domain_clean
-        sub_str = '.'.join(parts[:-2])
         for brand in TOP_BRANDS:
-            if brand in sub_str and brand not in apex:
-                findings.append(f"ALERT: Brand '{brand}' in subdomain but apex is '{apex}' — impersonation attack")
+            if brand in subdomain and brand not in registered_domain:
+                findings.append(
+                    f"ALERT: Brand '{brand}' appears in subdomain while registered domain is "
+                    f"'{registered_domain}' — impersonation attack"
+                )
                 risk += 3
                 break
 

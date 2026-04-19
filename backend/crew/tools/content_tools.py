@@ -95,15 +95,38 @@ def analyze_page_content(url: str) -> str:
 
         # 2. Hidden iframes
         iframes = soup.find_all('iframe')
-        hidden = [
-            f for f in iframes
-            if 'display:none' in f.get('style', '').replace(' ', '').lower()
-            or f.get('width') in ('0', '1')
-            or f.get('height') in ('0', '1')
-        ]
-        if hidden:
-            findings.append(f"ALERT: {len(hidden)} hidden iframe(s) — common drive-by download vector")
+        hidden = []
+        hidden_external = 0
+        for iframe in iframes:
+            style = iframe.get('style', '').replace(' ', '').lower()
+            is_hidden = (
+                'display:none' in style
+                or iframe.get('width') in ('0', '1')
+                or iframe.get('height') in ('0', '1')
+            )
+            if is_hidden:
+                hidden.append(iframe)
+                src = (iframe.get('src') or '').strip()
+                if src.startswith('http'):
+                    src_domain = urlparse(src).netloc
+                    if src_domain and src_domain != base_domain:
+                        hidden_external += 1
+
+        if hidden_external >= 2:
+            findings.append(
+                f"ALERT: {hidden_external} hidden iframe(s) load external domains — potential injection risk"
+            )
             risk += 3
+        elif hidden_external == 1:
+            findings.append(
+                "WARN: 1 hidden iframe loads an external domain — often legitimate (security/captcha/analytics), verify purpose"
+            )
+            risk += 1
+        elif hidden:
+            findings.append(
+                f"WARN: {len(hidden)} hidden iframe(s) detected — often used for analytics/consent, verify purpose"
+            )
+            risk += 1
         else:
             findings.append("OK: No hidden iframes detected")
 
