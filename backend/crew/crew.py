@@ -7,9 +7,8 @@ as taught in Ed Donner's Complete Agentic AI Engineering Course.
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 import os
-import uuid
-from datetime import datetime, timezone
 
+from analysis_report import finalize_report
 from .tools.url_tools import analyze_url_patterns, inspect_http_headers
 from .tools.content_tools import analyze_page_content, check_domain_reputation, check_phishing_databases
 
@@ -112,13 +111,7 @@ def analyze_url(url: str) -> dict:
     if not report:
         raise ValueError("CrewAI output did not return the expected Pydantic model representation.")
 
-    # Add backend-generated fields that the frontend expects
-    report['id'] = str(uuid.uuid4())
-    report['timestamp'] = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
-    report['target'] = url
-    report['targetType'] = 'url'
-    
-    return report
+    return finalize_report(report, url, 'url', 'crew')
 
 # Keep the heuristic function for file analysis from the previous impl,
 # since file analysis is static and not requested to be changed to crew right now.

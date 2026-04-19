@@ -21,11 +21,11 @@ export async function analyseFile(file) {
   return res.json();
 }
 
-export async function analyseUrl(url) {
+export async function analyseUrl(url, engine = 'crew') {
   const res = await fetch('/api/scan/url', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, engine }),
   });
 
   if (!res.ok) {

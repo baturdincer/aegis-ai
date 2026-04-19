@@ -375,6 +375,7 @@ def analyze_file(filename: str, content: bytes) -> dict:
         "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         "target": filename,
         "targetType": "file",
+        "engine": "heuristic",
         "scores": {"static": s_score, "dynamic": d_score, "intel": i_score},
         "phases": {
             "static":  {"name": "Static Analysis",     "score": s_score, "findings": static_findings},

@@ -6,6 +6,7 @@ from datetime import datetime
 
 class UrlScanRequest(BaseModel):
     url: str
+    engine: str = "crew"
 
 
 class Finding(BaseModel):
@@ -39,6 +40,7 @@ class ThreatReport(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     target: str
     targetType: Literal["url", "file"]
+    engine: str = "crew"
     scores: ScoreBreakdown
     phases: Phases
     mitigation: List[str]
@@ -50,6 +52,7 @@ class CrewReportOutput(BaseModel):
     riskScore: int
     target: str
     targetType: str
+    engine: str = "crew"
     scores: ScoreBreakdown
     phases: Phases
     mitigation: List[str]

@@ -9,6 +9,8 @@
 
 Aegis is a React-based web application that simulates a professional Security Operations Center (SOC) tool. Users can submit suspicious files or URLs and receive a comprehensive, AI-generated threat report — including static analysis, sandbox behavioural simulation, and threat intelligence cross-referencing — in seconds.
 
+The backend now supports both a CrewAI pipeline and a LangGraph pipeline for URL analysis, while preserving a single report schema for the frontend.
+
 The current version uses a **client-side mock analysis engine** that deterministically simulates the full agent pipeline. Real API integrations (VirusTotal, AbuseIPDB, Docker sandbox) are planned for future assignments.
 
 ---
@@ -24,6 +26,7 @@ The current version uses a **client-side mock analysis engine** that determinist
 | Detailed Report Modal | Phase-by-phase findings with SVG risk gauge |
 | Mitigation Steps | Prioritised, actionable response recommendations |
 | Scan History | LocalStorage-persisted history with search, filter, and drill-down |
+| Dual Orchestration | CrewAI and LangGraph URL pipelines with the same response schema |
 | Dark Mode UI | Professional cyber / SOC aesthetic using Tailwind CSS |
 
 ---
@@ -35,6 +38,8 @@ The current version uses a **client-side mock analysis engine** that determinist
 - **Routing:** React Router v6
 - **Icons:** Lucide React
 - **Analysis Engine:** Custom deterministic mock (`src/utils/mockAnalysis.js`)
+- **Backend Engines:** CrewAI + LangGraph orchestration over a shared FastAPI API
+- **Observability:** Optional LangSmith tracing for LangGraph / LangChain calls
 - **Persistence:** Browser LocalStorage
 
 ---
@@ -54,6 +59,11 @@ cd aegis-ai
 
 # Install dependencies
 npm install
+
+# Backend dependencies
+cd backend
+pip install -r requirements.txt
+cd ..
 ```
 
 ### Running Locally
@@ -63,6 +73,8 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+To enable LangSmith tracing, set `LANGCHAIN_API_KEY` (or `LANGSMITH_API_KEY`) along with `LANGCHAIN_PROJECT=aegis-ai` and `LANGCHAIN_TRACING_V2=true` in your backend environment.
 
 ### Production Build
 

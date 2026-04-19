@@ -11,13 +11,17 @@ const VERDICT_STYLE = {
 
 function Row({ r, onView, onDelete }) {
   const vc = VERDICT_STYLE[r.verdict] || 'text-bw-muted';
+  const engine = r.engine === 'langgraph' ? 'LangGraph' : r.engine === 'crew' ? 'CrewAI' : r.engine || 'Heuristic';
   return (
     <tr className="border-t border-bw-border hover:bg-bw-panel transition-colors group">
       <td className="px-4 py-3 max-w-[220px]">
         <p className="text-bw-text text-xs font-mono truncate" title={r.target}>{r.target}</p>
       </td>
       <td className="px-4 py-3">
-        <span className="text-bw-muted text-[10px] uppercase tracking-wide">{r.targetType}</span>
+        <div className="space-y-1">
+          <span className="text-bw-muted text-[10px] uppercase tracking-wide block">{r.targetType}</span>
+          <span className="text-bw-muted text-[9px] uppercase tracking-widest block">{engine}</span>
+        </div>
       </td>
       <td className="px-4 py-3">
         <span className={`text-xs font-bold tracking-widest uppercase ${vc}`}>{r.verdict}</span>
@@ -127,7 +131,7 @@ export default function HistoryPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-bw-border bg-bw-card">
-                    {['Target','Type','Verdict','Risk','Scanned At',''].map(h => (
+                    {['Target','Type / Engine','Verdict','Risk','Scanned At',''].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-[10px] text-bw-muted tracking-widest uppercase font-medium">{h}</th>
                     ))}
                   </tr>

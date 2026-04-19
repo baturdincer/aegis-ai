@@ -84,6 +84,7 @@ function AnalysisProgress({ stage }) {
 
 export default function DashboardPage() {
   const [mode, setMode]     = useState('file');
+  const [engine, setEngine] = useState('crew');
   const [url, setUrl]       = useState('');
   const [file, setFile]     = useState(null);
   const [error, setError]   = useState('');
@@ -115,7 +116,7 @@ export default function DashboardPage() {
     const iv = setInterval(() => { idx = Math.min(idx + 1, order.length - 1); setStage(order[idx]); }, 4000);
 
     try {
-      const result = mode === 'file' ? await analyseFile(file) : await analyseUrl(url.trim());
+      const result = mode === 'file' ? await analyseFile(file) : await analyseUrl(url.trim(), engine);
       saveReport(result);
       setReport(result);
     } catch (e) {
@@ -150,6 +151,25 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
+
+        {mode === 'url' && (
+          <div className="space-y-2">
+            <label className="text-[10px] text-bw-muted tracking-widest uppercase">Analysis Engine</label>
+            <div className="flex border border-bw-border rounded overflow-hidden w-fit">
+              {[{ key: 'crew', label: 'CrewAI' }, { key: 'langgraph', label: 'LangGraph' }].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setEngine(key)}
+                  disabled={scanning}
+                  className={`px-4 py-2 text-xs tracking-widest uppercase transition-colors
+                    ${engine === key ? 'bg-bw-white text-bw-bg font-bold' : 'text-bw-sub hover:text-bw-text'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Input */}
         <div className="border border-bw-border rounded-lg bg-bw-panel p-5 space-y-4">

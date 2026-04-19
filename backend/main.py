@@ -1,20 +1,27 @@
 """
 Aegis Threat Analyzer — FastAPI entry point.
 """
+import os
+
 from dotenv import load_dotenv
 load_dotenv()  # Must be first — loads GROQ_API_KEY before crewai imports
+
+if os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"):
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_PROJECT", "aegis-ai")
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from models import UrlScanRequest
-from crew.crew import analyze_url, analyze_file
+from crew.crew import analyze_url as analyze_url_crew, analyze_file
+from langgraph_pipeline import analyze_url as analyze_url_langgraph
 
 app = FastAPI(
     title="Aegis Threat Analyzer API",
     version="1.0.0",
-    description="AI-powered website and file security analysis using CrewAI + Groq.",
+    description="AI-powered website and file security analysis using CrewAI, LangGraph, and Groq.",
 )
 
 app.add_middleware(
@@ -28,13 +35,13 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "Aegis Threat Analyzer"}
+    return {"status": "ok", "service": "Aegis Threat Analyzer", "engines": ["crew", "langgraph"]}
 
 
 @app.post("/api/scan/url")
 async def scan_url(request: UrlScanRequest):
     """
-    Analyze a URL using the 3-agent CrewAI pipeline:
+    Analyze a URL using the 3-agent CrewAI pipeline or the LangGraph pipeline:
     Static Analyst → Dynamic Analyst → Threat Intel Specialist.
     Returns a full threat report matching the frontend schema.
     """
@@ -45,7 +52,10 @@ async def scan_url(request: UrlScanRequest):
         raise HTTPException(status_code=422, detail="URL must start with http:// or https://")
 
     try:
-        result = analyze_url(url)
+        if request.engine == "langgraph":
+            result = analyze_url_langgraph(url)
+        else:
+            result = analyze_url_crew(url)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

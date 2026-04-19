@@ -6,12 +6,14 @@ const FEATURES = [
   { icon: GitBranch, title: 'Threat Intelligence', desc: 'Cross-referenced against global reputation databases and MITRE ATT&CK mappings.' },
   { icon: BarChart2, title: 'Risk Scoring',        desc: 'Weighted composite score: Risk = 0.35×S + 0.40×D + 0.25×T.' },
   { icon: Shield,    title: 'Mitigation Guidance', desc: 'Actionable, prioritised response steps generated alongside every report.' },
+  { icon: ArrowRight, title: 'Graph Orchestration', desc: 'Switch between CrewAI and LangGraph while keeping one report schema and LangSmith-ready tracing hooks.' },
 ];
 
 const ARCH = [
   { label: 'React SPA',     sub: 'Frontend'         },
   { label: 'FastAPI',       sub: 'API Gateway'       },
-  { label: 'Groq AI Agent', sub: 'Analysis Engine'  },
+  { label: 'CrewAI / LangGraph', sub: 'Orchestrators' },
+  { label: 'Groq AI Agent', sub: 'LLM Backbone'      },
   { label: 'Threat Intel',  sub: 'External APIs'    },
 ];
 
@@ -48,7 +50,7 @@ export default function HomePage() {
             <p className="text-bw-sub leading-relaxed max-w-md text-sm">
               Aegis runs every file and URL through a three-phase AI pipeline —
               static inspection, dynamic analysis, and live threat intelligence —
-              to deliver a quantified risk verdict in seconds.
+              with CrewAI and LangGraph orchestration options to deliver a quantified risk verdict in seconds.
             </p>
 
             <div className="flex flex-wrap items-center gap-4">
@@ -66,7 +68,7 @@ export default function HomePage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               {[
                 { v: '3-Phase', l: 'Pipeline'     },
-                { v: '10s',     l: 'Analysis Time' },
+                { v: '2',       l: 'Engines'       },
                 { v: 'Groq',    l: 'AI Engine'     },
                 { v: '70+',     l: 'AV Coverage*'  },
               ].map(({ v, l }) => (
@@ -110,7 +112,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="mb-12">
             <h2 className="text-xl font-bold text-bw-white tracking-tight mb-2">Detection Engine</h2>
-            <p className="text-bw-sub text-sm max-w-lg">Three independent analysis phases, each powered by the Groq LLM agent.</p>
+            <p className="text-bw-sub text-sm max-w-lg">Three independent analysis phases, orchestrated through CrewAI or LangGraph and powered by the Groq LLM agent.</p>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-bw-border">
             {FEATURES.map(({ icon: Icon, title, desc }) => (

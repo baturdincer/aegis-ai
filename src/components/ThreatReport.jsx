@@ -79,6 +79,7 @@ export default function ThreatReport({ report, onClose }) {
   if (!report) return null;
   const vc = VERDICT[report.verdict] || VERDICT.CLEAN;
   const short = report.target.length > 55 ? report.target.slice(0, 52) + '…' : report.target;
+  const engineLabel = report.engine === 'langgraph' ? 'LangGraph' : report.engine === 'crew' ? 'CrewAI' : report.engine || 'Unknown';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -93,6 +94,8 @@ export default function ThreatReport({ report, onClose }) {
               </span>
               <span className="text-bw-muted text-xs">·</span>
               <span className="text-bw-sub text-xs">Risk Score: {report.riskScore}/100</span>
+              <span className="text-bw-muted text-xs">·</span>
+              <span className="text-bw-muted text-xs uppercase tracking-widest">{engineLabel}</span>
             </div>
             <p className="text-bw-muted text-[11px] mt-0.5">
               {new Date(report.timestamp).toLocaleString()} · {report.targetType === 'file' ? 'File' : 'URL'}
