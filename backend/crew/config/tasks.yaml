@@ -2,9 +2,11 @@ static_analysis_task:
   description: >
     Perform static analysis on: {url}
 
-    Step 1 — Call 'URL Pattern Analyzer' with the URL.
-    Step 2 — Call 'HTTP Security Header Inspector' with the URL.
+    Step 1 — Call the 'analyze_url_patterns' tool with the URL.
+    Step 2 — Call the 'inspect_http_headers' tool with the URL.
     Report ALL findings from both tools verbatim.
+
+    CRITICAL INSTRUCTION: If a tool fails to connect or returns an error (e.g., Connection failed), DO NOT attempt to search the web. DO NOT use 'brave_search' or any other search engine. Simply report the connection failure as part of your findings and conclude the task.
   expected_output: >
     A detailed static analysis covering URL structure findings and HTTP header 
     security findings, with severity (ALERT/WARN/OK) and numeric scores.
@@ -14,7 +16,7 @@ dynamic_analysis_task:
   description: >
     Perform dynamic content analysis on: {url}
 
-    Call 'Web Page Content Analyzer' with the URL and report all findings completely.
+    Call the 'analyze_page_content' tool with the URL and report all findings completely.
   expected_output: >
     A detailed dynamic analysis: form behaviors, JavaScript patterns, iframes, 
     redirects, and brand impersonation findings with severity labels.
@@ -24,11 +26,12 @@ intel_synthesis_task:
   description: >
     You are the final analyst. URL: {url}
 
-    Step 1 — Call 'Check Phishing Databases' with the URL. If the URL is found, you MUST flag it as an ALERT.
+    Step 1 — Call the 'check_phishing_databases' tool with the URL. If the URL is found, you MUST flag it as an ALERT.
     
-    Step 2 — Call 'Domain Reputation Checker' with the URL.
+    Step 2 — Call the 'check_domain_reputation' tool with the URL.
 
-    Step 2.5 — Call 'Local_Threat_DB_Search' with the URL to see if we have historical data on it via MCP.
+    Step 2.5 — Search the local SQLite database for historical threat data on this URL via your MCP tools.
+    CRITICAL: The table name in the database is EXACTLY 'known_threats'. Your SQL query MUST be: SELECT * FROM known_threats WHERE url = '...';
 
     Step 3 — Using ALL previous findings, assign phase scores (0-100) based on severity:
       • static  = score from URL patterns + HTTP headers

@@ -37,7 +37,7 @@ class AegisCrew():
             config=self.agents_config['static_analyst'],
             tools=[analyze_url_patterns, inspect_http_headers],
             verbose=True,
-            llm="groq/llama-3.3-70b-versatile"
+            llm="gpt-4o-mini"
         )
 
     @agent
@@ -46,7 +46,7 @@ class AegisCrew():
             config=self.agents_config['dynamic_analyst'],
             tools=[analyze_page_content],
             verbose=True,
-            llm="groq/llama-3.3-70b-versatile"
+            llm="gpt-4o-mini"
         )
 
     @agent
@@ -57,7 +57,7 @@ class AegisCrew():
             # Hem kendi yazdığınız araçları hem de MCP'den gelen araçları birleştiriyoruz
             tools=[check_domain_reputation, check_phishing_databases] + self.sqlite_mcp_tools,
             verbose=True,
-            llm="groq/llama-3.3-70b-versatile"
+            llm="gpt-4o-mini"
         )
 
     @task

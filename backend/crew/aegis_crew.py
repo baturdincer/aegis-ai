@@ -29,11 +29,11 @@ from .tools.content_tools import analyze_page_content, check_domain_reputation
 
 def _client() -> OpenAI:
     return OpenAI(
-        api_key=os.getenv("GROQ_API_KEY"),
+        api_key=os.getenv("OPENAI_API_KEY"),
         base_url="https://api.groq.com/openai/v1",
     )
 
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "gpt-4o-mini"
 
 
 def _chat(client: OpenAI, messages: list[dict], temperature: float = 0.05) -> str:
