@@ -22,13 +22,14 @@ class AegisCrew():
         # Örnek 1: Yerel bir SQLite veritabanındaki tehdit verilerine erişmek için MCP sunucusu
         # Ed Donner kursunda genelde npx veya uvx komutlarıyla harici sunucular çalıştırılır
         sqlite_mcp_params = StdioServerParameters(
-            command="npx", 
-            args=["-y", "@modelcontextprotocol/server-sqlite", "threat_intel.db"],
+            command="uvx", 
+            args=["mcp-server-sqlite", "--db", "threat_intel.db"],
             env=os.environ.copy()
         )
         
         # Adaptörü kullanarak MCP sunucusundaki fonksiyonları CrewAI tool'larına çeviriyoruz
-        self.sqlite_mcp_tools = MCPServerAdapter(sqlite_mcp_params).get_tools()
+        self.mcp_adapter = MCPServerAdapter(sqlite_mcp_params)
+        self.sqlite_mcp_tools = MCPServerAdapter(sqlite_mcp_params).tools
 
     @agent
     def static_analyst(self) -> Agent:
