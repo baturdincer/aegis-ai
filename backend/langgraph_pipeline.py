@@ -17,7 +17,7 @@ from crew.tools.content_tools import analyze_page_content, check_domain_reputati
 from crew.tools.url_tools import analyze_url_patterns, inspect_http_headers
 
 
-MODEL_NAME = "llama-3.3-70b-versatile"
+MODEL_NAME = "gpt-4o-mini"
 
 
 class UrlAnalysisState(TypedDict, total=False):
@@ -37,8 +37,7 @@ class UrlAnalysisState(TypedDict, total=False):
 def _client() -> ChatOpenAI:
     return ChatOpenAI(
         model=MODEL_NAME,
-        api_key=os.getenv("GROQ_API_KEY"),
-        base_url="https://api.groq.com/openai/v1",
+        api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.05,
         max_tokens=4096,
     )

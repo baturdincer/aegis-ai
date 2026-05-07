@@ -30,7 +30,6 @@ from .tools.content_tools import analyze_page_content, check_domain_reputation
 def _client() -> OpenAI:
     return OpenAI(
         api_key=os.getenv("OPENAI_API_KEY"),
-        base_url="https://api.groq.com/openai/v1",
     )
 
 MODEL = "gpt-4o-mini"
