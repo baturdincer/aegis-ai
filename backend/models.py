@@ -5,8 +5,12 @@ from datetime import datetime
 
 
 class UrlScanRequest(BaseModel):
-    url: str
-    engine: str = "crew"
+    url: str = Field(..., description="The URL to scan")
+    # "mcp" seçeneğini buraya ekliyoruz
+    engine: Literal["crew", "langgraph", "mcp"] = Field(
+        default="langgraph", 
+        description="The AI engine to orchestrate the analysis"
+    )
 
 
 class Finding(BaseModel):

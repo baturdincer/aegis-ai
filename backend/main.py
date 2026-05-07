@@ -4,6 +4,7 @@ Aegis Threat Analyzer — FastAPI entry point.
 import os
 
 from dotenv import load_dotenv
+from mcp_pipeline import analyze_url as analyze_url_mcp
 load_dotenv()  # Must be first — loads GROQ_API_KEY before crewai imports
 
 if os.getenv("ENABLE_LANGSMITH", "false").lower() == "true":
@@ -58,6 +59,8 @@ async def scan_url(request: UrlScanRequest):
     try:
         if request.engine == "langgraph":
             result = analyze_url_langgraph(url)
+        elif request.engine == "mcp":
+            result = await analyze_url_mcp(url)
         else:
             result = analyze_url_crew(url)
         return result

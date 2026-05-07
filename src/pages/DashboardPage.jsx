@@ -156,7 +156,11 @@ export default function DashboardPage() {
           <div className="space-y-2">
             <label className="text-[10px] text-bw-muted tracking-widest uppercase">Analysis Engine</label>
             <div className="flex border border-bw-border rounded overflow-hidden w-fit">
-              {[{ key: 'crew', label: 'CrewAI' }, { key: 'langgraph', label: 'LangGraph' }].map(({ key, label }) => (
+              {[
+                { key: 'crew', label: 'CrewAI' }, 
+                { key: 'langgraph', label: 'LangGraph' },
+                { key: 'mcp', label: 'Standalone MCP' } // <-- Yeni MCP motoru eklendi
+              ].map(({ key, label }) => (
                 <button
                   key={key}
                   onClick={() => setEngine(key)}
