@@ -28,6 +28,8 @@ intel_synthesis_task:
     
     Step 2 — Call 'Domain Reputation Checker' with the URL.
 
+    Step 2.5 — Call 'Local_Threat_DB_Search' with the URL to see if we have historical data on it via MCP.
+
     Step 3 — Using ALL previous findings, assign phase scores (0-100) based on severity:
       • static  = score from URL patterns + HTTP headers
       • dynamic = score from page content + JS analysis

@@ -1,9 +1,3 @@
-"""
-Aegis Threat Analyzer Crew.
-Implementation using the official CrewAI @CrewBase decorators and YAML config
-as taught in Ed Donner's Complete Agentic AI Engineering Course.
-"""
-
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 import os
@@ -12,24 +6,29 @@ from analysis_report import finalize_report
 from .tools.url_tools import analyze_url_patterns, inspect_http_headers
 from .tools.content_tools import analyze_page_content, check_domain_reputation, check_phishing_databases
 
-# Need to set os.environ for Groq API via LiteLLM which crewai uses natively
-# CrewAI allows specifying LLM simply by setting the environment variable or via llm param.
-# For Ed Donner's format, setting the LLM string inside the Agent or relying on the model is typical.
-# By default CrewAI will use OPENAI_API_KEY if we specify openai/. 
-# We can just tell it to use the groq/model string.
+# ---- MCP İÇİN YENİ EKLENEN İMPORTLAR ----
+from mcp import StdioServerParameters
+from crewai_tools import MCPServerAdapter
 
 @CrewBase
 class AegisCrew():
     """Aegis UI threat analysis crew"""
 
-    # Tell CrewBase where the config files are located relative to this file
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
 
     def __init__(self):
-        # Ensure CrewAI uses the Groq API key via LiteLLM
-        # LiteLLM looks for GROQ_API_KEY when the model string is "groq/..."
-        pass
+        # ---- MCP SUNUCUSU AYARLARI ----
+        # Örnek 1: Yerel bir SQLite veritabanındaki tehdit verilerine erişmek için MCP sunucusu
+        # Ed Donner kursunda genelde npx veya uvx komutlarıyla harici sunucular çalıştırılır
+        sqlite_mcp_params = StdioServerParameters(
+            command="npx", 
+            args=["-y", "@modelcontextprotocol/server-sqlite", "threat_intel.db"],
+            env=os.environ.copy()
+        )
+        
+        # Adaptörü kullanarak MCP sunucusundaki fonksiyonları CrewAI tool'larına çeviriyoruz
+        self.sqlite_mcp_tools = MCPServerAdapter(sqlite_mcp_params).get_tools()
 
     @agent
     def static_analyst(self) -> Agent:
@@ -53,7 +52,9 @@ class AegisCrew():
     def intel_specialist(self) -> Agent:
         return Agent(
             config=self.agents_config['intel_specialist'],
-            tools=[check_domain_reputation, check_phishing_databases],
+            # ---- MCP ARAÇLARINI AJANA EKLEME ----
+            # Hem kendi yazdığınız araçları hem de MCP'den gelen araçları birleştiriyoruz
+            tools=[check_domain_reputation, check_phishing_databases] + self.sqlite_mcp_tools,
             verbose=True,
             llm="groq/llama-3.3-70b-versatile"
         )
@@ -83,10 +84,9 @@ class AegisCrew():
 
     @crew
     def crew(self) -> Crew:
-        """Creates the Aegis Threat Analyzer crew"""
         return Crew(
-            agents=self.agents, # Automatically accumulated by the @agent decorator
-            tasks=self.tasks, # Automatically accumulated by the @task decorator
+            agents=self.agents, 
+            tasks=self.tasks,
             process=Process.sequential,
             verbose=True,
             memory=False
